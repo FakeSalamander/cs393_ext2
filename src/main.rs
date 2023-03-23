@@ -4,6 +4,7 @@ mod structs;
 use crate::structs::{BlockGroupDescriptor, DirectoryEntry, Inode, Superblock};
 use std::mem;
 use null_terminated::NulStr;
+use structs::{TypePerm, TypeIndicator};
 use uuid::Uuid;
 use zerocopy::ByteSlice;
 use std::fmt;
@@ -110,7 +111,7 @@ impl Ext2 {
         &inode_table[index]
     }
 
-    pub fn read_dir_inode(&self, inode: usize) -> std::io::Result<Vec<(usize, &NulStr)>> {
+    pub fn read_dir_inode(&self, inode: usize) -> std::io::Result<Vec<(usize, &NulStr, TypeIndicator)>> {
         let mut ret = Vec::new();
         let root = self.get_inode(inode);
         // println!("in read_dir_inode, #{} : {:?}", inode, root);
@@ -123,7 +124,7 @@ impl Ext2 {
             };
             // println!("{:?}", directory);
             byte_offset += directory.entry_size as isize;
-            ret.push((directory.inode as usize, &directory.name));
+            ret.push((directory.inode as usize, &directory.name, directory.type_indicator));
         } 
         Ok(ret)
     }
@@ -188,8 +189,18 @@ fn main() -> Result<()> {
                     for dir in &dirs {
                         if dir.1.to_string().eq(to_dir) {
                             // TODO: maybe don't just assume this is a directory
-                            found = true;
-                            current_working_inode = dir.0;
+                            match dir.2 {
+                                TypeIndicator::Directory => {found = true; current_working_inode = dir.0},
+                                _ => {print!("{} is not a directory\n", dir.1)}
+                            }
+
+
+                            //if dir.2 == TypeIndicator::Directory  {
+                            //    found = true;
+                            //    current_working_inode = dir.0;   
+                            //} else {
+                            //    print!("{} is not a directory!", dir.1);
+                            //}
                         }
                     }
                     if !found {
@@ -205,7 +216,33 @@ fn main() -> Result<()> {
                 // `cat filename`
                 // print the contents of filename to stdout
                 // if it's a directory, print a nice error
-                println!("cat not yet implemented");
+                let elts: Vec<&str> = line.split(' ').collect();
+                if elts.len() == 1 {
+                    print!("cat needs an argument");
+                } else {
+                    let to_file = elts[1];
+                    for dir in &dirs {
+                        if dir.1.to_string().eq(to_file) {
+                            match dir.2 {
+                                TypeIndicator::Directory => {print!("{} is a directory and cannot be read\n", dir.1)}
+                                _ => {
+                                    let file_dirs = match ext2.read_dir_inode(dir.0) {
+                                        Ok(dir_listing) => {
+                                            dir_listing
+                                        },
+                                        Err(_) => {
+                                            println!("unable to read cwd");
+                                            break;
+                                        }
+                                    };
+                                    for file_dir in &file_dirs {
+                                        print!("{}",file_dir.1);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             } else if line.starts_with("rm") {
                 // `rm target`
                 // unlink a file or empty directory
