@@ -126,6 +126,20 @@ impl Ext2 {
             byte_offset += directory.entry_size as isize;
             ret.push((directory.inode as usize, &directory.name, directory.type_indicator));
         } 
+        //reads the indirect pointer.
+        if root.indirect_pointer != 0 {
+            let block_of_ptrs = self.blocks[root.indirect_pointer as usize - self.block_offset].as_ptr();
+            let mut indirect_byte_offset: isize = 0;
+            //let mut direct_byte_offset: isize = 0;
+            while indirect_byte_offset < root.size_low as isize {
+                let indirectory = unsafe {
+                    &*(block_of_ptrs.offset(indirect_byte_offset) as *const DirectoryEntry)
+                };
+                indirect_byte_offset += indirectory.entry_size as isize;
+                ret.push((indirectory.inode as usize, &indirectory.name, indirectory.type_indicator));
+            }
+        }
+
         Ok(ret)
     }
 }
@@ -236,7 +250,11 @@ fn main() -> Result<()> {
                                         }
                                     };
                                     for file_dir in &file_dirs {
-                                        print!("{}",file_dir.1);
+                                        print!("{}", file_dir.1);
+                                    }
+                                    let file_inode = ext2.get_inode(dir.0);
+                                    if file_inode.indirect_pointer != 0 {
+                                        
                                     }
                                 }
                             }
